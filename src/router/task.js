@@ -1,59 +1,81 @@
 const express = require("express");
 const router = new express.Router();
+const auth = require("../middleware/auth");
 const isValidObjectId = require("mongoose").isValidObjectId;
 const Task = require("../models/task");
 
-router.post("/createTask", (req, res) => {
-  const task = new Task(req.body);
+router.post("/createTask", auth, async (req, res) => {
+  try {
+    const task = new Task({ ...req.body, owner: req.user._id });
 
-  task
-    .save()
-    .then(() => {
-      res.status(201);
-      res.send({ message: "Task created successfully!", data: req.body });
-    })
-    .catch((err) => {
-      res.status(400).send({ message: err.message });
+    await task.save();
+
+    res.status(201);
+    res.send({ message: "Task created successfully!", task });
+  } catch (e) {
+    res.status(400).send({ error: e.message });
+  }
+});
+
+//getTasks?limit=2&skip=2
+//getTasks?sortBy=createdAt:desc
+router.get("/getTasks", auth, async (req, res) => {
+  try {
+    const match = {};
+    const sort = {};
+
+    if (req.query.completed) {
+      match.completed = req.query.completed === "true";
+    }
+
+    if (req.query.sortBy) {
+      const parts = req.query.sortBy.split(":");
+      sort[parts[0]] = parts[1] === "desc" ? -1 : 1;
+    }
+
+    await req.user.populate({
+      path: "tasks",
+      match,
+      options: {
+        limit: parseInt(req.query.limit),
+        skip: parseInt(req.query.skip),
+        sort,
+      },
     });
+    res.status(200).send(req.user.tasks);
+  } catch (e) {
+    res.status(500).send(e.message);
+  }
 });
 
-router.get("/getTasks", (req, res) => {
-  Task.find({})
-    .then((tasks) => {
-      if (!tasks) {
-        return res.status(204).send();
-      }
-      res.status(200).send(tasks);
-    })
-    .catch((e) => res.status(500).send(e.message));
-});
-
-router.get("/getTaskById/:id", (req, res) => {
+router.get("/getTaskById/:id", auth, async (req, res) => {
   if (!isValidObjectId(req.params.id)) {
     return res.status(400).send({ message: "Id is invalid!" });
   }
-  Task.findOne({ _id: req.params.id })
-    .then((task) => {
-      if (!task) {
-        return res.status(404).send({ error: "Task not found with the given Id!" });
-      }
-      res.send(task);
-    })
-    .catch((e) => res.status(500).send(e.message));
+  try {
+    const task = await Task.findOne({ _id: req.params.id, owner: req.user._id });
+    if (!task) {
+      return res.status(404).send({ error: "Task not found with the given Id!" });
+    }
+    res.send(task);
+  } catch (e) {
+    res.status(500).send(e.message);
+  }
 });
 
-router.delete("/deleteTask/:id", (req, res) => {
+router.delete("/deleteTask/:id", auth, async (req, res) => {
   if (!isValidObjectId(req.params.id)) {
     return res.status(400).send({ message: "Id is invalid!" });
   }
-  Task.findByIdAndDelete(req.params.id)
-    .then((task) => {
-      if (!task) {
-        return res.status(404).send({ message: "No task found with given id!" });
-      }
-      res.status(200).send(task);
-    })
-    .catch((e) => res.status(500).send({ message: e.message }));
+  try {
+    const task = await Task.findOneAndDelete({ _id: req.params.id, owner: req.user._id });
+    if (!task) {
+      return res.status(404).send({ message: "No task found with given id!" });
+    }
+    res.send(task);
+  } catch (e) {
+    res.status(500).send({ message: e.message });
+  }
 });
 
 router.patch("/updateTask/:id", async (req, res) => {

@@ -1,10 +1,8 @@
-const bcryptjs = require("bcryptjs");
 const express = require("express");
 const auth = require("../middleware/auth");
 const router = new express.Router();
 const isValidObjectId = require("mongoose").isValidObjectId;
 const User = require("../models/user");
-const { userAccess } = require("../models/user");
 
 router.post("/createUser", async (req, res) => {
   const body = req.body;
@@ -64,41 +62,30 @@ router.post("/users/logoutAll", auth, async (req, res) => {
   }
 });
 
-router.get("/getUserById/:id", auth, (req, res) => {
-  if (!isValidObjectId(req.params.id)) {
-    return res.status(400).send({ error: "Id is invalid!" });
+router.delete("/users/me", auth, async (req, res) => {
+  try {
+    req.user.remove();
+    res.send();
+  } catch (e) {
+    res.status(500).send({ error: e.message });
   }
-  User.findById({ _id: req.params.id })
-    .then((user) => {
-      if (!user) {
-        return res.status(404).send({ error: "User not found with the given Id!" });
-      }
-      res.status(200).send(user);
-    })
-    .catch((e) => res.status(500).send(e.message));
 });
 
-router.patch("/updateUser/:id", async (req, res) => {
-  const updates = Object.keys(req.body);
-  const allowedKeys = ["name", "email", "age", "password"];
-  const isValidOperation = updates.every((update) => allowedKeys.includes(update));
+router.patch("/users/me", auth, async (req, res) => {
   try {
+    const updates = Object.keys(req.body);
+    const allowedKeys = ["name", "email", "age", "password"];
+    const isValidOperation = updates.every((update) => allowedKeys.includes(update));
     if (!isValidOperation) {
       return res
         .status(400)
         .send({ error: "Key you provided is not valid to update!", allowedKeys });
     }
-    if (!isValidObjectId(req.params.id)) {
-      return res.status(400).send({ error: "Id is invalid!" });
-    }
 
-    const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).send("User not found with the given id!");
+    updates.forEach((update) => (req.user[update] = req.body[update]));
 
-    updates.forEach((update) => (user[update] = req.body[update]));
-
-    await user.save();
-    res.send(user);
+    await req.user.save();
+    res.send(req.user);
   } catch (e) {
     res.status(500).send(e.message);
   }

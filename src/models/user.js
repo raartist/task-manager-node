@@ -3,49 +3,59 @@ const res = require("express/lib/response");
 const jsonwebtoken = require("jsonwebtoken");
 const mongoose = require("mongoose");
 const validator = require("validator");
+const Task = require("./task");
 
-const userSchema = new mongoose.Schema({
-  name: { type: String, trim: true, required: true },
-  age: {
-    type: Number,
-    default: 0,
-    validate(value) {
-      if (value < 0) {
-        throw new Error("How could you be in negative age?");
-      }
-    },
-  },
-  email: {
-    type: String,
-    required: true,
-    unique: true,
-    lowerCase: true,
-    trim: true,
-    validate(value) {
-      if (!validator.isEmail(value)) {
-        throw new Error("Email is invalid!");
-      }
-    },
-  },
-  password: {
-    type: String,
-    required: true,
-    minLength: [7, "Password must be more than 6 characters long!"],
-    trim: true,
-    validate(value) {
-      if (value.toLowerCase().includes("password")) {
-        throw new Error("Password cannot contain 'password' string!");
-      }
-    },
-  },
-  tokens: [
-    {
-      token: {
-        type: String,
-        required: true,
+const userSchema = new mongoose.Schema(
+  {
+    name: { type: String, trim: true, required: true },
+    age: {
+      type: Number,
+      default: 0,
+      validate(value) {
+        if (value < 0) {
+          throw new Error("How could you be in negative age?");
+        }
       },
     },
-  ],
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowerCase: true,
+      trim: true,
+      validate(value) {
+        if (!validator.isEmail(value)) {
+          throw new Error("Email is invalid!");
+        }
+      },
+    },
+    password: {
+      type: String,
+      required: true,
+      minLength: [7, "Password must be more than 6 characters long!"],
+      trim: true,
+      validate(value) {
+        if (value.toLowerCase().includes("password")) {
+          throw new Error("Password cannot contain 'password' string!");
+        }
+      },
+    },
+    tokens: [
+      {
+        token: {
+          type: String,
+          required: true,
+        },
+      },
+    ],
+  },
+  { timestamps: true }
+);
+
+userSchema.virtual("tasks", {
+  ref: "Task",
+  localField: "_id",
+  foreignField: "owner",
 });
 
 userSchema.methods.toJSON = function () {
@@ -91,6 +101,12 @@ userSchema.pre("save", async function (next) {
     user.password = await bcryptjs.hash(user.password, 8).then((res) => res);
   }
 
+  next();
+});
+
+userSchema.pre("remove", async function (next) {
+  const user = this;
+  await Task.deleteMany({ owner: user._id });
   next();
 });
 
