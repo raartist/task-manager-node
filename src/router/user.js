@@ -1,8 +1,9 @@
 const express = require("express");
 const auth = require("../middleware/auth");
 const router = new express.Router();
-const isValidObjectId = require("mongoose").isValidObjectId;
+const sharp = require("sharp");
 const User = require("../models/user");
+const multer = require("multer");
 
 router.post("/createUser", async (req, res) => {
   const body = req.body;
@@ -88,6 +89,68 @@ router.patch("/users/me", auth, async (req, res) => {
     res.send(req.user);
   } catch (e) {
     res.status(500).send(e.message);
+  }
+});
+
+const upload = multer({
+  limits: {
+    fileSize: 1000000,
+  },
+  fileFilter(req, file, cb) {
+    if (!file.originalname.match(/\.(jpg|jpeg|png)$/)) {
+      return cb(new Error("Please upload a JPEG or PNG"));
+    }
+    cb(undefined, true);
+  },
+});
+
+// upload.single("avatar")
+
+router.post(
+  "/users/me/avatar",
+  auth,
+  upload.single("avatar"),
+  async (req, res) => {
+    const buffer = await sharp(req.file.buffer)
+      .resize({ width: 300, height: 300 })
+      .png()
+      .toBuffer();
+
+    req.user.avatar = buffer;
+    await req.user.save();
+    res.send();
+  },
+  (error, req, res, next) => {
+    res.status(400).send({ error: error.message });
+  }
+);
+
+router.delete(
+  "/users/me/avatar",
+  auth,
+  upload.single("avatar"),
+  async (req, res) => {
+    req.user.avatar = undefined;
+    await req.user.save();
+    res.send();
+  },
+  (error, req, res, next) => {
+    res.status(400).send({ error: error.message });
+  }
+);
+
+router.get("/users/:id/avatar", async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+
+    if (!user || !user.avatar) {
+      throw new Error();
+    }
+
+    res.set("Content-Type", "image/jpg");
+    res.send(user.avatar);
+  } catch (e) {
+    res.status(404).send();
   }
 });
 
